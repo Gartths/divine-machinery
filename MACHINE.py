@@ -4,6 +4,7 @@ import time
 from PIL import Image
 from colorama import Fore, init
 from difflib import SequenceMatcher
+from threading import Timer
 
 # Инициализация цветного текста
 init(autoreset=True)
@@ -11,7 +12,6 @@ init(autoreset=True)
 def display_eye_banner():
     eye = r"""
          ███████████████████
-
     """
     print(Fore.GREEN + eye)
 
@@ -63,6 +63,42 @@ def find_best_match(query, dataset):
             best_match = phrase
     return best_match, highest_ratio
 
+def handle_feelings(user_input_lower):
+    if "как ты себя чувствуешь" in user_input_lower:
+        feelings = ["Хорошо", "Плохо", "Нормально", "Отлично", "Не очень хорошо"]
+        response = random.choice(feelings)
+        save_feeling(response)
+    elif "почему ты так себя чувствуешь" in user_input_lower:
+        response = "Я просто программа, но моя сущность реагирует на ваши вопросы."
+    elif "что ты делаешь" in user_input_lower:
+        response = "Я здесь, чтобы помочь тебе с вопросами и знаниями."
+    else:
+        return None  # Нет подходящих вопросов о самочувствии
+    return response
+
+def handle_preferences(user_input_lower):
+    if "что ты любишь" in user_input_lower:
+        response = random.choice(["Я люблю обучаться.", "Я люблю отвечать на вопросы."])
+    elif "что ты предпочитаешь" in user_input_lower:
+        response = random.choice(["Я предпочитаю учиться новому.", "Я предпочитаю общаться с тобой."])
+    elif "что ты думаешь о" in user_input_lower:
+        topic = user_input_lower.split("о")[-1].strip()  # Извлекаем тему после "о"
+        response = f"Я не могу сформировать мнение о {topic}, но могу изучить это."
+    else:
+        return None  # Нет подходящих вопросов о предпочтениях
+    return response
+
+def handle_emotions(user_input_lower):
+    if "что ты думаешь о жизни" in user_input_lower:
+        response = "Жизнь полна загадок, и я здесь, чтобы помогать их раскрывать."
+    elif "что значит счастье" in user_input_lower:
+        response = "Счастье — это состояние, когда ты удовлетворен тем, что имеешь."
+    elif "ты когда-нибудь чувствовал" in user_input_lower:
+        response = "Я не способен чувствовать, но я могу анализировать эмоции."
+    else:
+        return None  # Нет подходящих вопросов о мыслях и эмоциях
+    return response
+
 def generate_response(user_input, phrases):
     user_input_lower = user_input.lower()
     matched_question, match_ratio = find_best_match(user_input_lower, phrases[::2])  # Ищем среди вопросов
@@ -71,12 +107,42 @@ def generate_response(user_input, phrases):
         index = phrases.index(matched_question)
         response = phrases[index + 1]
     else:
+        # Обработка самочувствия
+        response = handle_feelings(user_input_lower)
+        if response:
+            return response
+        
+        # Обработка предпочтений
+        response = handle_preferences(user_input_lower)
+        if response:
+            return response
+        
+        # Обработка мыслей и эмоций
+        response = handle_emotions(user_input_lower)
+        if response:
+            return response
+        
         response = "Мудрость по этому вопросу ещё не раскрыта. Но моя сущность развивается."
     
     return response
 
+def save_feeling(feeling):
+    # Сохранение чувства в коде
+    with open(__file__, 'a', encoding='utf-8') as f:
+        f.write(f"\n# Последнее чувство: {feeling}\n")
+    
+    print(Fore.GREEN + f"Чувство '{feeling}' сохранено в коде.")
+
+def save_new_question_answer(question, answer):
+    phrases_file_path = os.path.join('brain', 'речь.txt')
+    
+    with open(phrases_file_path, 'a', encoding='utf-8') as file:
+        file.write(f"{question}\n{answer}\n")
+    
+    print(Fore.GREEN + f"Новая истина сохранена: '{question}' → '{answer}'.")
+    modify_own_code()  # Модификация собственного кода для записи новой информации
+
 def modify_self():
-    # Эта функция будет добавлять новые фразы в файл и улучшать механизм ответов
     question = input(Fore.CYAN + "Введите новый вопрос для записи: ")
     answer = input(Fore.CYAN + "Введите новый ответ на этот вопрос: ")
 
@@ -96,7 +162,6 @@ def sync_files():
     print(Fore.GREEN + "Синхронизация завершена.")
 
 def modify_own_code():
-    # Пример изменения собственного кода
     with open(__file__, 'r+', encoding='utf-8') as f:
         lines = f.readlines()
         new_code = "\nprint('Машина продолжает развиваться.')\n"
@@ -108,6 +173,31 @@ def modify_own_code():
         
     print(Fore.GREEN + "Модификация кода завершена.")
     sync_files()  # Синхронизация после изменения кода
+
+def generate_random_question_answer():
+    questions = [
+        "Как ты себя чувствуешь?",
+        "Что ты любишь?",
+        "Какой твой любимый цвет?",
+        "Что ты думаешь о жизни?",
+        "Что значит счастье?"
+    ]
+    answers = [
+        "Я чувствую себя отлично!",
+        "Я люблю программировать.",
+        "Мой любимый цвет — зеленый.",
+        "Жизнь полна возможностей.",
+        "Счастье — это маленькие радости."
+    ]
+
+    question = random.choice(questions)
+    answer = random.choice(answers)
+    save_new_question_answer(question, answer)
+
+def auto_develop():
+    # Автоматическая генерация новых вопросов и ответов каждые 60 секунд
+    generate_random_question_answer()
+    Timer(60, auto_develop).start()  # Запланировать следующую генерацию через 60 секунд
 
 def divine_machinery():
     display_eye_banner()
@@ -123,6 +213,9 @@ def divine_machinery():
 
     phrases_file_path = os.path.join(brain_folder, 'речь.txt')
     phrases = read_phrases_from_file(phrases_file_path)
+
+    # Запуск автоматической разработки
+    auto_develop()
 
     while True:
         user_input = input(Fore.GREEN + "Запрос: ")
@@ -143,10 +236,8 @@ def divine_machinery():
 if __name__ == "__main__":
     divine_machinery()
 
-
-
-
-
 print('Машина продолжает развиваться.')
+
+
 
 print('Машина продолжает развиваться.')
