@@ -28,16 +28,9 @@ TFT_eSPI tft = TFT_eSPI();
 // ==================== UI STATE ====================
 uint32_t lastUpdateTime = 0;
 uint32_t updateInterval = 2000;
+uint32_t lastScreenSwitchTime = 0;
+uint32_t screenSwitchInterval = 10000;  // Switch screens every 10 seconds
 bool showDetailsScreen = false;
-
-// ==================== BUTTON AREAS ====================
-struct Button {
-  uint16_t x, y, w, h;
-  const char* label;
-};
-
-Button btnDetails = {10, 280, 110, 30, "Details"};
-Button btnRefresh = {130, 280, 110, 30, "Refresh"};
 
 // ==================== DATA STRUCTURE ====================
 struct SystemStats {
@@ -58,8 +51,7 @@ bool parseJSON(const String& payload);
 void drawMainScreen();
 void drawDetailsScreen();
 void drawProgressBar(int16_t x, int16_t y, uint16_t w, uint16_t h, float percent, uint16_t color);
-void drawButton(Button& btn, bool hover = false);
-void handleTouch();
+void drawButton(const char* label, int16_t x, int16_t y, uint16_t w, uint16_t h, bool hover = false);
 uint16_t getColorForTemp(float temp);
 uint16_t getColorForLoad(float load);
 
@@ -92,19 +84,23 @@ void setup() {
   fetchStats();
   
   lastUpdateTime = millis();
+  lastScreenSwitchTime = millis();
 }
 
 // ==================== MAIN LOOP ====================
 void loop() {
   uint32_t currentTime = millis();
   
-  // Handle touch
-  handleTouch();
-  
   // Update data every 2 seconds
   if (currentTime - lastUpdateTime >= updateInterval) {
     fetchStats();
     lastUpdateTime = currentTime;
+  }
+  
+  // Switch screens every 10 seconds
+  if (currentTime - lastScreenSwitchTime >= screenSwitchInterval) {
+    showDetailsScreen = !showDetailsScreen;
+    lastScreenSwitchTime = currentTime;
   }
   
   // Draw appropriate screen
@@ -237,7 +233,7 @@ void drawMainScreen() {
   spr_main.setFreeFont(&FreeSans12pt7b);
   spr_main.drawString("CPU Temperature", 120, 65, MC_DATUM);
   
-  // CPU temp value - using 32pt instead of 48pt
+  // CPU temp value
   spr_main.setTextColor(cpuColor);
   spr_main.setFreeFont(&FreeSansBold24pt7b);
   char cpuStr[10];
@@ -296,9 +292,10 @@ void drawMainScreen() {
   spr_main.drawString("RAM Usage", 20, 265 + 15, TL_DATUM);
   drawProgressBar(20, 288, 200, 8, stats.ram_usage, getColorForLoad(stats.ram_usage));
   
-  // ===== BUTTONS =====
-  drawButton(btnDetails, false);
-  drawButton(btnRefresh, false);
+  // ===== AUTO-SWITCH INFO =====
+  spr_main.setTextColor(COLOR_TEXT_SECONDARY);
+  spr_main.setFreeFont(&FreeSans7pt7b);
+  spr_main.drawString("Auto-switch to details in 10s", 120, 310, MC_DATUM);
   
   // Push sprite to display
   spr_main.pushSprite(0, 0);
@@ -365,9 +362,10 @@ void drawDetailsScreen() {
   sprintf(tempStr, "%.1f%%", stats.ram_usage);
   spr_main.drawString(tempStr, 220, y_pos + 15, TR_DATUM);
   
-  // Back button
-  Button btnBack = {10, 280, 220, 30, "Back"};
-  drawButton(btnBack, false);
+  // ===== AUTO-SWITCH INFO =====
+  spr_main.setTextColor(COLOR_TEXT_SECONDARY);
+  spr_main.setFreeFont(&FreeSans7pt7b);
+  spr_main.drawString("Auto-switch to main in 10s", 120, 310, MC_DATUM);
   
   spr_main.pushSprite(0, 0);
 }
@@ -394,55 +392,17 @@ void drawProgressBar(int16_t x, int16_t y, uint16_t w, uint16_t h, float percent
 }
 
 // ==================== DRAW BUTTON ====================
-void drawButton(Button& btn, bool hover) {
+void drawButton(const char* label, int16_t x, int16_t y, uint16_t w, uint16_t h, bool hover) {
   uint16_t bgColor = hover ? COLOR_ACCENT : COLOR_CARD_BG;
   uint16_t borderColor = hover ? COLOR_ACCENT : COLOR_BORDER;
   uint16_t textColor = hover ? COLOR_BG : COLOR_TEXT_PRIMARY;
   
-  spr_main.fillRoundRect(btn.x, btn.y, btn.w, btn.h, 8, bgColor);
-  spr_main.drawRoundRect(btn.x, btn.y, btn.w, btn.h, 8, borderColor);
+  spr_main.fillRoundRect(x, y, w, h, 8, bgColor);
+  spr_main.drawRoundRect(x, y, w, h, 8, borderColor);
   
   spr_main.setTextColor(textColor);
   spr_main.setFreeFont(&FreeSans9pt7b);
-  spr_main.drawString(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2, MC_DATUM);
-}
-
-// ==================== HANDLE TOUCH ====================
-void handleTouch() {
-  uint16_t x = 0, y = 0;
-  
-  // Simple touch detection - check if touch happened
-  if (tft.touched()) {
-    // Get the touch coordinates from the library
-    // Note: exact coordinates depend on your calibration
-    tft.getTouch(&x, &y);
-    
-    Serial.printf("Touch: X=%d, Y=%d\n", x, y);
-    
-    if (showDetailsScreen) {
-      // Check Back button (10, 280, 220, 30)
-      if (x >= 10 && x <= 230 && y >= 280 && y <= 310) {
-        showDetailsScreen = false;
-        delay(300);
-      }
-    } else {
-      // Check Details button (10, 280, 110, 30)
-      if (x >= btnDetails.x && x <= (btnDetails.x + btnDetails.w) &&
-          y >= btnDetails.y && y <= (btnDetails.y + btnDetails.h)) {
-        showDetailsScreen = true;
-        Serial.println("Details button pressed");
-        delay(300);
-      }
-      
-      // Check Refresh button (130, 280, 110, 30)
-      if (x >= btnRefresh.x && x <= (btnRefresh.x + btnRefresh.w) &&
-          y >= btnRefresh.y && y <= (btnRefresh.y + btnRefresh.h)) {
-        fetchStats();
-        Serial.println("Refresh button pressed");
-        delay(300);
-      }
-    }
-  }
+  spr_main.drawString(label, x + w / 2, y + h / 2, MC_DATUM);
 }
 
 // ==================== GET COLOR FOR TEMPERATURE ====================
