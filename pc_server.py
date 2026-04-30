@@ -4,18 +4,20 @@ ESP32 System Monitor - PC Server
 Sends CPU/GPU/RAM stats to ESP32 via HTTP JSON
 
 Requirements:
-pip install flask psutil py-cpuinfo GPUtil
+pip install flask psutil py-cpuinfo GPUtil flask-cors
+
+Or minimal version (without GPU):
+pip install flask psutil flask-cors
 """
 
 import json
 import psutil
-import cpuinfo
-import GPUtil
 from flask import Flask, jsonify
 from flask_cors import CORS
 import threading
 import time
 from datetime import datetime
+import socket
 
 app = Flask(__name__)
 CORS(app)
@@ -33,6 +35,21 @@ stats = {
     "ram_usage": 0.0,
     "timestamp": ""
 }
+
+# Try to import optional dependencies
+try:
+    import cpuinfo
+    HAS_CPUINFO = True
+except ImportError:
+    HAS_CPUINFO = False
+    print("[WARNING] py-cpuinfo not installed. Install with: pip install py-cpuinfo")
+
+try:
+    import GPUtil
+    HAS_GPU = True
+except ImportError:
+    HAS_GPU = False
+    print("[WARNING] GPUtil not installed. GPU temps will be 0. Install with: pip install GPUtil")
 
 # ==================== GET CPU TEMPERATURE ====================
 def get_cpu_temp():
@@ -54,19 +71,21 @@ def get_cpu_temp():
                     return entries[0].current
         return 0.0
     except Exception as e:
-        print(f"[ERROR] CPU Temp: {e}")
+        print(f"[WARNING] CPU Temp not available: {e}")
         return 0.0
 
 # ==================== GET GPU TEMPERATURE ====================
 def get_gpu_temp():
     """Get GPU temperature (NVIDIA only)"""
+    if not HAS_GPU:
+        return 0.0
+    
     try:
         gpus = GPUtil.getGPUs()
         if gpus:
             return float(gpus[0].temperature)
         return 0.0
     except Exception as e:
-        print(f"[WARNING] GPU Temp not available: {e}")
         return 0.0
 
 # ==================== GET CPU LOAD ====================
@@ -86,6 +105,26 @@ def get_ram_usage():
     except Exception as e:
         print(f"[ERROR] RAM Usage: {e}")
         return 0.0
+
+# ==================== GET CPU INFO ====================
+def get_cpu_name():
+    """Get CPU name"""
+    if HAS_CPUINFO:
+        try:
+            return cpuinfo.get_cpu_info()['brand_raw']
+        except:
+            pass
+    
+    # Fallback
+    return "Unknown CPU"
+
+# ==================== GET HOSTNAME ====================
+def get_hostname():
+    """Get computer hostname"""
+    try:
+        return socket.gethostname()
+    except:
+        return "Unknown"
 
 # ==================== UPDATE STATS THREAD ====================
 def update_stats_thread():
@@ -124,9 +163,9 @@ def get_info():
     """Return system info"""
     try:
         info = {
-            "cpu": cpuinfo.get_cpu_info()['brand_raw'],
+            "cpu": get_cpu_name(),
             "ram_total": f"{psutil.virtual_memory().total / (1024**3):.1f} GB",
-            "hostname": __import__('socket').gethostname()
+            "hostname": get_hostname()
         }
         return jsonify(info)
     except Exception as e:
@@ -140,26 +179,29 @@ def health():
 
 # ==================== MAIN ====================
 if __name__ == '__main__':
-    print("\n" + "="*60)
-    print(" ESP32 System Monitor - PC Server")
-    print("="*60)
+    print("\n" + "="*70)
+    print(" 🖥️  ESP32 System Monitor - PC Server")
+    print("="*70)
     
     # Print system info
     try:
         print(f"\n📊 System Information:")
-        print(f"   CPU: {cpuinfo.get_cpu_info()['brand_raw']}")
+        print(f"   CPU: {get_cpu_name()}")
         print(f"   RAM: {psutil.virtual_memory().total / (1024**3):.1f} GB")
-        print(f"   Hostname: {__import__('socket').gethostname()}")
+        print(f"   Hostname: {get_hostname()}")
         
         # Check GPU
-        try:
-            gpus = GPUtil.getGPUs()
-            if gpus:
-                print(f"   GPU: {gpus[0].name}")
-            else:
-                print(f"   GPU: Not found")
-        except:
-            print(f"   GPU: Not available")
+        if HAS_GPU:
+            try:
+                gpus = GPUtil.getGPUs()
+                if gpus:
+                    print(f"   GPU: {gpus[0].name}")
+                else:
+                    print(f"   GPU: Not found")
+            except:
+                print(f"   GPU: Not available")
+        else:
+            print(f"   GPU: GPUtil not installed")
     except Exception as e:
         print(f"[WARNING] Could not get system info: {e}")
     
@@ -168,15 +210,24 @@ if __name__ == '__main__':
     thread = threading.Thread(target=update_stats_thread, daemon=True)
     thread.start()
     
+    # Get local IP
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except:
+        local_ip = "127.0.0.1"
+    
     # Start Flask server
     print(f"\n📡 Starting HTTP server...")
-    print(f"   Address: http://0.0.0.0:{PORT}")
-    print(f"   Endpoint: /stats (JSON data)")
-    print(f"   Endpoint: /info (System info)")
-    print(f"   Endpoint: /health (Health check)")
-    print(f"\n💡 Configure ESP32 with your PC IP address!")
-    print(f"   Example: http://192.168.1.X:{PORT}/stats")
-    print("="*60 + "\n")
+    print(f"   Local:    http://127.0.0.1:{PORT}/stats")
+    print(f"   Network:  http://{local_ip}:{PORT}/stats")
+    print(f"\n   Available endpoints:")
+    print(f"   • /stats  - Get system stats (JSON)")
+    print(f"   • /info   - Get system info")
+    print(f"   • /health - Health check")
+    print(f"\n💡 Configure ESP32 with your PC IP address:")
+    print(f"   const char* serverURL = \"http://{local_ip}:{PORT}/stats\";")
+    print("="*70 + "\n")
     
     # Run Flask app
     try:
