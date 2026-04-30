@@ -75,9 +75,6 @@ void setup() {
   tft.setRotation(0);  // Portrait mode (240x320)
   tft.fillScreen(COLOR_BG);
   
-  // Initialize calibration data for touch
-  tft.calibrateTouch();
-  
   // Create sprite
   spr_main.createSprite(240, 320);
   spr_main.setColorDepth(16);
@@ -412,23 +409,24 @@ void drawButton(Button& btn, bool hover) {
 
 // ==================== HANDLE TOUCH ====================
 void handleTouch() {
-  uint16_t x, y;
+  uint16_t x = 0, y = 0;
   
-  // Use calibration function to get touch coordinates
-  if (tft.getTouchRaw(&x, &y)) {
-    // Convert raw touch coordinates to screen coordinates
-    tft.convertRawXY(&x, &y);
+  // Simple touch detection - check if touch happened
+  if (tft.touched()) {
+    // Get the touch coordinates from the library
+    // Note: exact coordinates depend on your calibration
+    tft.getTouch(&x, &y);
     
     Serial.printf("Touch: X=%d, Y=%d\n", x, y);
     
     if (showDetailsScreen) {
-      // Check Back button
+      // Check Back button (10, 280, 220, 30)
       if (x >= 10 && x <= 230 && y >= 280 && y <= 310) {
         showDetailsScreen = false;
         delay(300);
       }
     } else {
-      // Check Details button
+      // Check Details button (10, 280, 110, 30)
       if (x >= btnDetails.x && x <= (btnDetails.x + btnDetails.w) &&
           y >= btnDetails.y && y <= (btnDetails.y + btnDetails.h)) {
         showDetailsScreen = true;
@@ -436,7 +434,7 @@ void handleTouch() {
         delay(300);
       }
       
-      // Check Refresh button
+      // Check Refresh button (130, 280, 110, 30)
       if (x >= btnRefresh.x && x <= (btnRefresh.x + btnRefresh.w) &&
           y >= btnRefresh.y && y <= (btnRefresh.y + btnRefresh.h)) {
         fetchStats();
