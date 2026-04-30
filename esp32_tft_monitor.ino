@@ -7,11 +7,10 @@
 // ==================== WIFI CONFIG ====================
 const char* ssid = "YOUR_SSID";
 const char* password = "YOUR_PASSWORD";
-const char* serverURL = "http://192.168.X.X:5000/stats";  // Adjust IP and port
+const char* serverURL = "http://192.168.36.106:5000/stats";
 
-// ==================== TFT & TOUCH CONFIG ====================
+// ==================== TFT CONFIG ====================
 TFT_eSPI tft = TFT_eSPI();
-#define TOUCH_CS 33
 
 // ==================== COLORS (Modern Dark Theme) ====================
 #define COLOR_BG 0x0C12
@@ -35,11 +34,10 @@ bool showDetailsScreen = false;
 struct Button {
   uint16_t x, y, w, h;
   const char* label;
-  bool pressed;
 };
 
-Button btnDetails = {10, 280, 110, 30, "Details", false};
-Button btnRefresh = {130, 280, 110, 30, "Refresh", false};
+Button btnDetails = {10, 280, 110, 30, "Details"};
+Button btnRefresh = {130, 280, 110, 30, "Refresh"};
 
 // ==================== DATA STRUCTURE ====================
 struct SystemStats {
@@ -52,8 +50,6 @@ struct SystemStats {
 
 // ==================== SPRITES ====================
 TFT_eSprite spr_main = TFT_eSprite(&tft);
-TFT_eSprite spr_card = TFT_eSprite(&tft);
-TFT_eSprite spr_details = TFT_eSprite(&tft);
 
 // ==================== FORWARD DECLARATIONS ====================
 void connectWiFi();
@@ -61,7 +57,6 @@ void fetchStats();
 bool parseJSON(const String& payload);
 void drawMainScreen();
 void drawDetailsScreen();
-void drawCard(int16_t x, int16_t y, const char* title, float value, const char* unit, uint16_t color);
 void drawProgressBar(int16_t x, int16_t y, uint16_t w, uint16_t h, float percent, uint16_t color);
 void drawButton(Button& btn, bool hover = false);
 void handleTouch();
@@ -77,15 +72,21 @@ void setup() {
   
   // Initialize TFT
   tft.init();
-  tft.setRotation(0);  // Portrait mode
+  tft.setRotation(0);  // Portrait mode (240x320)
   tft.fillScreen(COLOR_BG);
   
-  // Initialize Touch
-  tft.touch_init();
+  // Initialize calibration data for touch
+  tft.calibrateTouch();
   
-  // Create sprites
+  // Create sprite
   spr_main.createSprite(240, 320);
   spr_main.setColorDepth(16);
+  
+  // Show splash screen
+  tft.fillScreen(COLOR_BG);
+  tft.setTextColor(COLOR_ACCENT_COOL);
+  tft.setFreeFont(&FreeSansBold24pt7b);
+  tft.drawString("Connecting...", 120, 140, MC_DATUM);
   
   // Connect to WiFi
   connectWiFi();
@@ -142,7 +143,7 @@ void connectWiFi() {
     tft.fillScreen(COLOR_BG);
     tft.setTextColor(COLOR_SUCCESS);
     tft.setFreeFont(&FreeSansBold18pt7b);
-    tft.drawString("WiFi Connected", 120, 160, MC_DATUM);
+    tft.drawString("WiFi OK", 120, 160, MC_DATUM);
   } else {
     Serial.println("\nFailed to connect WiFi");
     tft.fillScreen(COLOR_BG);
@@ -239,12 +240,12 @@ void drawMainScreen() {
   spr_main.setFreeFont(&FreeSans12pt7b);
   spr_main.drawString("CPU Temperature", 120, 65, MC_DATUM);
   
-  // CPU temp value
+  // CPU temp value - using 32pt instead of 48pt
   spr_main.setTextColor(cpuColor);
-  spr_main.setFreeFont(&FreeSansBold48pt7b);
+  spr_main.setFreeFont(&FreeSansBold24pt7b);
   char cpuStr[10];
   sprintf(cpuStr, "%.1f", stats.cpu_temp);
-  spr_main.drawString(cpuStr, 90, 120, MC_DATUM);
+  spr_main.drawString(cpuStr, 90, 115, MC_DATUM);
   
   // Temperature unit
   spr_main.setFreeFont(&FreeSansBold18pt7b);
@@ -312,12 +313,13 @@ void drawDetailsScreen() {
   
   // ===== HEADER =====
   spr_main.setTextColor(COLOR_TEXT_PRIMARY);
-  spr_main.setFreeFont(&FreeSansBold20pt7b);
+  spr_main.setFreeFont(&FreeSansBold24pt7b);
   spr_main.drawString("Detailed Stats", 120, 20, MC_DATUM);
   
   // ===== DETAILED INFO =====
   int y_pos = 70;
   int line_height = 50;
+  char tempStr[20];
   
   // CPU Temperature Details
   spr_main.fillRoundRect(10, y_pos, 220, 45, 10, COLOR_CARD_BG);
@@ -327,7 +329,6 @@ void drawDetailsScreen() {
   spr_main.drawString("CPU Temperature", 20, y_pos + 10, TL_DATUM);
   spr_main.setTextColor(getColorForTemp(stats.cpu_temp));
   spr_main.setFreeFont(&FreeSansBold18pt7b);
-  char tempStr[20];
   sprintf(tempStr, "%.2f°C", stats.cpu_temp);
   spr_main.drawString(tempStr, 220, y_pos + 15, TR_DATUM);
   
@@ -368,33 +369,18 @@ void drawDetailsScreen() {
   spr_main.drawString(tempStr, 220, y_pos + 15, TR_DATUM);
   
   // Back button
-  Button btnBack = {10, 280, 220, 30, "Back", false};
+  Button btnBack = {10, 280, 220, 30, "Back"};
   drawButton(btnBack, false);
   
   spr_main.pushSprite(0, 0);
 }
 
-// ==================== DRAW CARD ====================
-void drawCard(int16_t x, int16_t y, const char* title, float value, const char* unit, uint16_t color) {
-  spr_main.fillRoundRect(x, y, 100, 70, 10, COLOR_CARD_BG);
-  spr_main.drawRoundRect(x, y, 100, 70, 10, COLOR_BORDER);
-  
-  spr_main.setTextColor(COLOR_TEXT_SECONDARY);
-  spr_main.setFreeFont(&FreeSans9pt7b);
-  spr_main.drawString(title, x + 50, y + 8, MC_DATUM);
-  
-  spr_main.setTextColor(color);
-  spr_main.setFreeFont(&FreeSansBold18pt7b);
-  char valStr[20];
-  sprintf(valStr, "%.1f", value);
-  spr_main.drawString(valStr, x + 50, y + 35, MC_DATUM);
-  
-  spr_main.setFreeFont(&FreeSans9pt7b);
-  spr_main.drawString(unit, x + 50, y + 55, MC_DATUM);
-}
-
 // ==================== DRAW PROGRESS BAR ====================
 void drawProgressBar(int16_t x, int16_t y, uint16_t w, uint16_t h, float percent, uint16_t color) {
+  // Clamp percent to 0-100
+  if (percent > 100) percent = 100;
+  if (percent < 0) percent = 0;
+  
   // Background
   spr_main.fillRect(x, y, w, h, COLOR_BORDER);
   
@@ -428,7 +414,11 @@ void drawButton(Button& btn, bool hover) {
 void handleTouch() {
   uint16_t x, y;
   
-  if (tft.getTouch(&x, &y)) {
+  // Use calibration function to get touch coordinates
+  if (tft.getTouchRaw(&x, &y)) {
+    // Convert raw touch coordinates to screen coordinates
+    tft.convertRawXY(&x, &y);
+    
     Serial.printf("Touch: X=%d, Y=%d\n", x, y);
     
     if (showDetailsScreen) {
@@ -442,6 +432,7 @@ void handleTouch() {
       if (x >= btnDetails.x && x <= (btnDetails.x + btnDetails.w) &&
           y >= btnDetails.y && y <= (btnDetails.y + btnDetails.h)) {
         showDetailsScreen = true;
+        Serial.println("Details button pressed");
         delay(300);
       }
       
@@ -449,6 +440,7 @@ void handleTouch() {
       if (x >= btnRefresh.x && x <= (btnRefresh.x + btnRefresh.w) &&
           y >= btnRefresh.y && y <= (btnRefresh.y + btnRefresh.h)) {
         fetchStats();
+        Serial.println("Refresh button pressed");
         delay(300);
       }
     }
